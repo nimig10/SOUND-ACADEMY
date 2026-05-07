@@ -16,7 +16,7 @@ export const lS = {
   display: 'block', fontSize: 10, color: '#666', marginBottom: 5, letterSpacing: .5,
 };
 
-export const BUILT_IN_TYPES = ['freq', 'eq', 'effects', 'compressor', 'gate'];
+export const BUILT_IN_TYPES = ['freq', 'eq', 'effects', 'compressor', 'gate', 'ducker'];
 
 export const INSTRUMENTS = [
   { id: 'kick',     icon: '🥁', label: 'קיק'          },
@@ -43,6 +43,7 @@ export const INIT_EX_TYPES = [
   { id: 'effects',    label: 'אפקטים',      icon: '🌀', color: '#ff44bb' },
   { id: 'compressor', label: 'קומפרסור',    icon: '🗜️', color: '#ff8844' },
   { id: 'gate',       label: 'Gate',        icon: '🚪', color: '#00e87a' },
+  { id: 'ducker',     label: 'Ducker',      icon: '🦆', color: '#44ddff' },
 ];
 
 export const INIT_STUDENTS = [

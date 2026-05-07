@@ -15,6 +15,7 @@ import EQTrain          from './training/EQTrain.jsx';
 import FXTrain          from './training/FXTrain.jsx';
 import CompressorTrain  from './training/CompressorTrain.jsx';
 import GateTrain        from './training/GateTrain.jsx';
+import DuckerTrain      from './training/DuckerTrain.jsx';
 import GenericExercise  from './training/GenericExercise.jsx';
 
 export default function App() {
@@ -101,6 +102,7 @@ export default function App() {
             {activeEx.type === 'effects'    && <FXTrain         onComplete={handleComplete} />}
             {activeEx.type === 'compressor' && <CompressorTrain onComplete={handleComplete} />}
             {activeEx.type === 'gate'       && <GateTrain       onComplete={handleComplete} />}
+            {activeEx.type === 'ducker'     && <DuckerTrain     onComplete={handleComplete} />}
             {!BUILT_IN_TYPES.includes(activeEx.type) && <GenericExercise exercise={activeEx} exTypes={exTypes} onComplete={handleComplete} />}
           </>
         )}
