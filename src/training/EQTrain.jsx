@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { C } from '../constants.js';
+import { useSignalSource, parseSignalFromNotes } from '../hooks/useSignalSource.js';
 
 const EQ_TR_BANDS = [
   { f: 80,    l: '80Hz'  },
@@ -12,13 +13,16 @@ const EQ_TR_BANDS = [
   { f: 16000, l: '16kHz' },
 ];
 
-export default function EQTrain({ onComplete }) {
+export default function EQTrain({ exercise, onComplete }) {
   const [tgt,   setTgt]   = useState(EQ_TR_BANDS.map(() => 0));
   const [usr,   setUsr]   = useState(EQ_TR_BANDS.map(() => 0));
   const [phase, setPhase] = useState('idle');
   const [res,   setRes]   = useState(null);
   const actx   = useRef(null);
   const srcRef = useRef(null);
+
+  const { sigBufRef, loading } = useSignalSource(exercise);
+  const { signalConfig } = parseSignalFromNotes(exercise?.notes);
 
   const getCtx = () => {
     if (!actx.current) actx.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -31,10 +35,17 @@ export default function EQTrain({ onComplete }) {
   const playEQ = bands => {
     stop();
     const ctx = getCtx();
-    const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * .22;
-    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    let src;
+    if (sigBufRef.current) {
+      const ab = ctx.createBuffer(1, sigBufRef.current.length, ctx.sampleRate);
+      ab.getChannelData(0).set(sigBufRef.current);
+      src = ctx.createBufferSource(); src.buffer = ab; src.loop = true;
+    } else {
+      const ab = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const d = ab.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * .22;
+      src = ctx.createBufferSource(); src.buffer = ab; src.loop = true;
+    }
     let prev = src;
     EQ_TR_BANDS.forEach((b, i) => {
       const f = ctx.createBiquadFilter(); f.type = 'peaking'; f.frequency.value = b.f; f.Q.value = 1.4; f.gain.value = bands[i];
@@ -46,13 +57,13 @@ export default function EQTrain({ onComplete }) {
   };
 
   const newRound = () => {
-    const t = EQ_TR_BANDS.map(() => Math.random() > .45 ? (Math.random() * 18 - 9) : 0);
+    const preset = signalConfig?.targetParams?.bands;
+    const t = preset ? [...preset] : EQ_TR_BANDS.map(() => Math.random() > .45 ? (Math.random() * 18 - 9) : 0);
     setTgt(t); setUsr(EQ_TR_BANDS.map(() => 0)); setPhase('ready'); setRes(null);
     setTimeout(() => playEQ(t), 100);
   };
 
   const submit = () => {
-    stop();
     const diffs = tgt.map((t, i) => Math.abs(t - usr[i]));
     const sc = Math.max(0, Math.round(100 - diffs.reduce((a, b) => a + b, 0) / diffs.length * 5));
     setRes(sc); setPhase('done');
@@ -65,10 +76,13 @@ export default function EQTrain({ onComplete }) {
   const toY = g => H / 2 - (g / 12) * (H / 2 - 12);
   const toX = i => 24 + (i / (EQ_TR_BANDS.length - 1)) * (W - 48);
 
+  if (loading) return <div style={{ color: C.muted, fontSize: 13, padding: 24 }}>⏳ טוען אות...</div>;
+
   return (
     <div>
       <h1 style={{ fontSize: 23, fontWeight: 900, color: C.y, margin: '0 0 5px' }}>📈 אימון EQ</h1>
-      <p style={{ color: C.muted, margin: '0 0 22px', fontSize: 13 }}>האזן לטרגט וכוון את ה-EQ להתאמה</p>
+      <p style={{ color: C.muted, margin: '0 0 18px', fontSize: 13 }}>האזן לטרגט וכוון את ה-EQ להתאמה</p>
+
       <div style={{ background: C.card, padding: 24, borderRadius: 12, border: '1px solid ' + C.borderLit }}>
         <svg width="100%" viewBox={'0 0 ' + W + ' ' + H} style={{ background: '#090909', borderRadius: 8, border: '1px solid ' + C.dim, marginBottom: 18, display: 'block' }}>
           {[-12, -6, 0, 6, 12].map(g => <line key={g} x1="0" y1={toY(g)} x2={W} y2={toY(g)} stroke={g === 0 ? C.borderLit : C.border} strokeWidth={g === 0 ? 1.5 : 1} />)}

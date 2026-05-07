@@ -1,12 +1,24 @@
 import { useState } from 'react';
 import { C, iS, lS, BUILT_IN_TYPES } from '../constants.js';
 import { supabase } from '../lib/supabase.js';
+import AdminSignalPicker from './AdminSignalPicker.jsx';
+import { parseSignalFromNotes, serializeSignalToNotes } from '../hooks/useSignalSource.js';
 
 export default function ExerciseModal({ exercise, onSave, onClose, exTypes, setExTypes }) {
-  const def = { title: '', type: exTypes[0]?.id || 'freq', diff: 'קל', description: '', instructions: '', audioUrl: null, audioName: null, notes: '' };
-  const [form, setForm] = useState(exercise || def);
-  const [ntOpen, setNtOpen] = useState(false);
-  const [nt, setNt] = useState({ label: '', icon: '🎯', color: '#44aaff' });
+  const initSignal = parseSignalFromNotes(exercise?.notes);
+  const def = {
+    title: '', type: exTypes[0]?.id || 'freq', diff: 'קל',
+    description: '', instructions: '',
+    audioUrl: null, audioName: null,
+    notes: '',
+    signalType: 'auto', signalConfig: null,
+  };
+  const [form, setForm] = useState(exercise
+    ? { ...exercise, notes: initSignal.pureNotes, signalType: initSignal.signalType, signalConfig: initSignal.signalConfig }
+    : def
+  );
+  const [ntOpen,    setNtOpen]    = useState(false);
+  const [nt,        setNt]        = useState({ label: '', icon: '🎯', color: '#44aaff' });
   const [uploading, setUploading] = useState(false);
 
   const f = (k, v) => setForm(x => ({ ...x, [k]: v }));
@@ -31,7 +43,13 @@ export default function ExerciseModal({ exercise, onSave, onClose, exTypes, setE
     setUploading(false);
   };
 
-  const curType = exTypes.find(t => t.id === form.type);
+  const handleSave = () => {
+    if (!form.title) return;
+    const { signalType, signalConfig, notes, ...rest } = form;
+    onSave({ ...rest, notes: serializeSignalToNotes(signalType, signalConfig, notes) });
+  };
+
+  const curType  = exTypes.find(t => t.id === form.type);
   const isCustom = !BUILT_IN_TYPES.includes(form.type);
 
   return (
@@ -86,6 +104,19 @@ export default function ExerciseModal({ exercise, onSave, onClose, exTypes, setE
           </div>
         )}
 
+        {/* Signal source — only for built-in training types */}
+        {!isCustom && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={lS}>מקור אות לתרגיל</label>
+            <AdminSignalPicker
+              exerciseType={form.type}
+              signalType={form.signalType || 'auto'}
+              signalConfig={form.signalConfig}
+              onChange={(type, config) => setForm(x => ({ ...x, signalType: type, signalConfig: config }))}
+            />
+          </div>
+        )}
+
         <div style={{ marginBottom: 12 }}>
           <label style={lS}>תיאור קצר</label>
           <input value={form.description || ''} onChange={e => f('description', e.target.value)} style={iS} placeholder="תיאור קצר..." />
@@ -96,7 +127,7 @@ export default function ExerciseModal({ exercise, onSave, onClose, exTypes, setE
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label style={lS}>קובץ אודיו</label>
+          <label style={lS}>קובץ אודיו (להאזנה / הפניה)</label>
           {uploading ? (
             <div style={{ padding: '10px 14px', background: C.panel, border: '1px solid ' + C.y + '44', borderRadius: 7, color: C.y, fontSize: 12 }}>⏳ מעלה קובץ...</div>
           ) : form.audioName ? (
@@ -119,7 +150,7 @@ export default function ExerciseModal({ exercise, onSave, onClose, exTypes, setE
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={() => form.title && onSave(form)} disabled={!form.title}
+          <button onClick={handleSave} disabled={!form.title}
             style={{ flex: 1, padding: 12, background: form.title ? C.y : C.yDim, color: '#000', border: 'none', borderRadius: 8, fontWeight: 900, fontSize: 14, cursor: form.title ? 'pointer' : 'not-allowed' }}>
             {exercise ? 'עדכן תרגיל' : '+ הוסף תרגיל'}
           </button>

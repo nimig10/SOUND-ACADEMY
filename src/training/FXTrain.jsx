@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { C } from '../constants.js';
 import Knob from '../components/Knob.jsx';
 import MetaFlangerUI from './MetaFlangerUI.jsx';
+import { useSignalSource } from '../hooks/useSignalSource.js';
 
 const FX_DEFS = [
   { id: 'delay',   l: 'Delay',   icon: '⏱️', params: [{ k: 'time', l: 'Time (s)', mn: .05, mx: 1 }, { k: 'fb', l: 'Feedback', mn: 0, mx: .9 }, { k: 'mix', l: 'Mix', mn: 0, mx: 1 }] },
@@ -10,7 +11,7 @@ const FX_DEFS = [
   { id: 'flanger', l: 'Flanger', icon: '🔁', params: [{ k: 'mix', l: 'Mix', mn: 0, mx: 100 }, { k: 'fb', l: 'Feedback', mn: 0, mx: 100 }, { k: 'time', l: 'Delay ms', mn: 0.1, mx: 20 }, { k: 'rate', l: 'Rate Hz', mn: 0.1, mx: 15 }, { k: 'depth', l: 'Depth', mn: 0, mx: 12 }] },
 ];
 
-export default function FXTrain({ onComplete }) {
+export default function FXTrain({ exercise, onComplete }) {
   const [fx,    setFx]    = useState(FX_DEFS[0]);
   const [tgt,   setTgt]   = useState(null);
   const [usr,   setUsr]   = useState({});
@@ -18,6 +19,8 @@ export default function FXTrain({ onComplete }) {
   const [res,   setRes]   = useState(null);
   const actx  = useRef(null);
   const osRef = useRef(null);
+
+  const { sigBufRef, loading } = useSignalSource(exercise);
 
   const getCtx = () => {
     if (!actx.current) actx.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -27,52 +30,70 @@ export default function FXTrain({ onComplete }) {
 
   const stop = () => { try { osRef.current && osRef.current.stop(); } catch (e) {} osRef.current = null; };
 
+  const makeSignal = (ctx, defaultType, defaultFreq, defaultDur) => {
+    if (sigBufRef.current) {
+      const ab = ctx.createBuffer(1, sigBufRef.current.length, ctx.sampleRate);
+      ab.getChannelData(0).set(sigBufRef.current);
+      const src = ctx.createBufferSource(); src.buffer = ab; src.loop = true;
+      const g = ctx.createGain(); g.gain.value = 0.5;
+      src.connect(g);
+      return { node: g, start: () => src.start(), cleanup: () => { osRef.current = src; } };
+    }
+    const os = ctx.createOscillator(); os.type = defaultType; os.frequency.value = defaultFreq;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(.4, ctx.currentTime);
+    env.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + defaultDur * 0.8);
+    os.connect(env);
+    return { node: env, start: () => { os.start(); os.stop(ctx.currentTime + defaultDur); }, cleanup: () => { osRef.current = os; } };
+  };
+
   const playDelay = p => {
     stop(); const ctx = getCtx();
-    const os = ctx.createOscillator(); os.type = 'sawtooth'; os.frequency.value = 220;
-    const env = ctx.createGain(); env.gain.setValueAtTime(.4, ctx.currentTime); env.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + .3);
+    const { node: sig, start, cleanup } = makeSignal(ctx, 'sawtooth', 220, 3);
     const del = ctx.createDelay(2); del.delayTime.value = p.time || .25;
     const fbg = ctx.createGain(); fbg.gain.value = p.fb || .4;
     const dry = ctx.createGain(); dry.gain.value = 1 - (p.mix || .5);
     const wet = ctx.createGain(); wet.gain.value = p.mix || .5;
     const out = ctx.createGain(); out.gain.value = .65;
-    os.connect(env); env.connect(dry); env.connect(del); del.connect(fbg); fbg.connect(del); del.connect(wet);
+    sig.connect(dry); sig.connect(del); del.connect(fbg); fbg.connect(del); del.connect(wet);
     dry.connect(out); wet.connect(out); out.connect(ctx.destination);
-    os.start(); os.stop(ctx.currentTime + 3); osRef.current = os;
+    start(); cleanup();
   };
 
   const playReverb = p => {
     stop(); const ctx = getCtx();
-    const decay = p.decay || 2; const irLen = Math.floor(ctx.sampleRate * Math.max(.5, decay));
+    const decay = p.decay || 2;
+    const irLen = Math.floor(ctx.sampleRate * Math.max(.5, decay));
     const ir = ctx.createBuffer(2, irLen, ctx.sampleRate);
     for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < irLen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLen, decay * .35); }
     const conv = ctx.createConvolver(); conv.buffer = ir;
-    const os = ctx.createOscillator(); os.type = 'sine'; os.frequency.value = 440;
-    const env = ctx.createGain(); env.gain.setValueAtTime(.5, ctx.currentTime); env.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + .2);
+    const { node: sig, start, cleanup } = makeSignal(ctx, 'sine', 440, 4);
     const dry = ctx.createGain(); dry.gain.value = 1 - (p.mix || .5);
     const wet = ctx.createGain(); wet.gain.value = p.mix || .5;
     const out = ctx.createGain(); out.gain.value = .65;
-    os.connect(env); env.connect(dry); env.connect(conv); conv.connect(wet); dry.connect(out); wet.connect(out); out.connect(ctx.destination);
-    os.start(); os.stop(ctx.currentTime + 4); osRef.current = os;
+    sig.connect(dry); sig.connect(conv); conv.connect(wet); dry.connect(out); wet.connect(out); out.connect(ctx.destination);
+    start(); cleanup();
   };
 
   const playChorus = p => {
     stop(); const ctx = getCtx();
-    const os = ctx.createOscillator(); os.type = 'sawtooth'; os.frequency.value = 330;
+    const { node: sig, start, cleanup } = makeSignal(ctx, 'sawtooth', 330, 3);
     const lfo = ctx.createOscillator(); lfo.frequency.value = p.rate || .8;
     const lfog = ctx.createGain(); lfog.gain.value = (p.depth || .5) * 22;
     const del = ctx.createDelay(.1); del.delayTime.value = .022;
     const dry = ctx.createGain(); dry.gain.value = 1 - (p.mix || .5);
     const wet = ctx.createGain(); wet.gain.value = p.mix || .5;
     const out = ctx.createGain(); out.gain.value = .5;
-    lfo.connect(lfog); lfog.connect(del.delayTime); os.connect(dry); os.connect(del); del.connect(wet);
+    lfo.connect(lfog); lfog.connect(del.delayTime);
+    sig.connect(dry); sig.connect(del); del.connect(wet);
     dry.connect(out); wet.connect(out); out.connect(ctx.destination);
-    os.start(); lfo.start(); os.stop(ctx.currentTime + 3); lfo.stop(ctx.currentTime + 3); osRef.current = os;
+    lfo.start(); start(); cleanup();
+    lfo.stop(ctx.currentTime + 3);
   };
 
   const playFlanger = p => {
     stop(); const ctx = getCtx();
-    const os = ctx.createOscillator(); os.type = 'sawtooth'; os.frequency.value = 110;
+    const { node: sig, start, cleanup } = makeSignal(ctx, 'sawtooth', 110, 4);
     const lfo = ctx.createOscillator(); lfo.frequency.value = p.rate || 2;
     const lfog = ctx.createGain(); lfog.gain.value = (p.depth || 4) * 0.00025;
     const del = ctx.createDelay(.05); del.delayTime.value = (p.time || 6) * 0.001;
@@ -81,13 +102,15 @@ export default function FXTrain({ onComplete }) {
     const dry = ctx.createGain(); dry.gain.value = 1 - mix;
     const wet = ctx.createGain(); wet.gain.value = mix;
     const out = ctx.createGain(); out.gain.value = .5;
-    lfo.connect(lfog); lfog.connect(del.delayTime); os.connect(dry); os.connect(del);
-    del.connect(fbg); fbg.connect(del); del.connect(wet); dry.connect(out); wet.connect(out); out.connect(ctx.destination);
-    os.start(); lfo.start(); os.stop(ctx.currentTime + 4); lfo.stop(ctx.currentTime + 4); osRef.current = os;
+    lfo.connect(lfog); lfog.connect(del.delayTime);
+    sig.connect(dry); sig.connect(del); del.connect(fbg); fbg.connect(del); del.connect(wet);
+    dry.connect(out); wet.connect(out); out.connect(ctx.destination);
+    lfo.start(); start(); cleanup();
+    lfo.stop(ctx.currentTime + 4);
   };
 
   const playFx = p => {
-    if (fx.id === 'delay')   playDelay(p);
+    if      (fx.id === 'delay')   playDelay(p);
     else if (fx.id === 'reverb')  playReverb(p);
     else if (fx.id === 'chorus')  playChorus(p);
     else                          playFlanger(p);
@@ -121,6 +144,8 @@ export default function FXTrain({ onComplete }) {
       ))}
     </div>
   );
+
+  if (loading) return <div style={{ color: C.muted, fontSize: 13, padding: 24 }}>⏳ טוען אות...</div>;
 
   if (fx.id === 'flanger') return (
     <div>

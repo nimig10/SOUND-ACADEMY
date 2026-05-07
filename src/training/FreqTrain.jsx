@@ -1,16 +1,19 @@
 import { useState, useRef } from 'react';
 import { C } from '../constants.js';
+import { useSignalSource } from '../hooks/useSignalSource.js';
 
 const FREQS = [63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 const FLAB  = ['63Hz','125Hz','250Hz','500Hz','1kHz','2kHz','4kHz','8kHz','16kHz'];
 
-export default function FreqTrain({ onComplete }) {
+export default function FreqTrain({ exercise, onComplete }) {
   const [phase,   setPhase]   = useState('idle');
   const [target,  setTarget]  = useState(null);
   const [choices, setChoices] = useState([]);
   const [sel,     setSel]     = useState(null);
   const [hist,    setHist]    = useState([]);
   const actx = useRef(null);
+
+  const { sigBufRef, loading } = useSignalSource(exercise);
 
   const getCtx = () => {
     if (!actx.current) actx.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -20,23 +23,32 @@ export default function FreqTrain({ onComplete }) {
 
   const play = freq => {
     const ctx = getCtx();
-    const buf = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    const src = ctx.createBufferSource(); src.buffer = buf;
+    const dur = 1.5;
+    let src;
+    if (sigBufRef.current) {
+      const len = Math.min(sigBufRef.current.length, Math.floor(ctx.sampleRate * dur));
+      const ab = ctx.createBuffer(1, len, ctx.sampleRate);
+      ab.getChannelData(0).set(sigBufRef.current.slice(0, len));
+      src = ctx.createBufferSource(); src.buffer = ab;
+    } else {
+      const ab = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+      const d = ab.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      src = ctx.createBufferSource(); src.buffer = ab;
+    }
     const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = 6;
-    const g = ctx.createGain();
+    const g  = ctx.createGain();
     g.gain.setValueAtTime(0, ctx.currentTime);
     g.gain.linearRampToValueAtTime(.55, ctx.currentTime + .05);
     g.gain.linearRampToValueAtTime(.55, ctx.currentTime + 1.2);
-    g.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.5);
+    g.gain.linearRampToValueAtTime(0,   ctx.currentTime + 1.5);
     src.connect(bp); bp.connect(g); g.connect(ctx.destination);
     src.start(); src.stop(ctx.currentTime + 1.5);
   };
 
   const newRound = () => {
     const idx = Math.floor(Math.random() * FREQS.length);
-    const t = FREQS[idx];
+    const t   = FREQS[idx];
     const oth = FREQS.filter((_, i) => i !== idx).sort(() => Math.random() - .5).slice(0, 3);
     setTarget(t); setChoices([...oth, t].sort(() => Math.random() - .5));
     setSel(null); setPhase('playing'); play(t);
@@ -52,18 +64,23 @@ export default function FreqTrain({ onComplete }) {
 
   const pct = hist.length ? Math.round(hist.filter(h => h.ok).length / hist.length * 100) : null;
 
+  if (loading) return <div style={{ color: C.muted, fontSize: 13, padding: 24 }}>⏳ טוען אות...</div>;
+
   return (
     <div>
       <h1 style={{ fontSize: 23, fontWeight: 900, color: C.y, margin: '0 0 5px' }}>🎵 זיהוי תדרים</h1>
-      <p style={{ color: C.muted, margin: '0 0 22px', fontSize: 13 }}>האזן לצליל מסונן וזהה את תדר המרכז</p>
+      <p style={{ color: C.muted, margin: '0 0 18px', fontSize: 13 }}>האזן לצליל מסונן וזהה את תדר המרכז</p>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px', gap: 18 }}>
         <div style={{ background: C.card, padding: 26, borderRadius: 12, border: '1px solid ' + C.borderLit }}>
+
           {phase === 'idle' && (
             <div style={{ textAlign: 'center', padding: '44px 0' }}>
               <div style={{ fontSize: 46, marginBottom: 14 }}>🎧</div>
               <button onClick={newRound} style={{ padding: '13px 44px', background: C.y, color: '#000', border: 'none', borderRadius: 8, fontWeight: 900, fontSize: 15, cursor: 'pointer' }}>▶ השמע צליל</button>
             </div>
           )}
+
           {(phase === 'playing' || phase === 'answered') && (
             <>
               <div style={{ display: 'flex', gap: 10, marginBottom: 22 }}>
@@ -80,7 +97,7 @@ export default function FreqTrain({ onComplete }) {
                   }
                   return (
                     <button key={f} onClick={() => answer(f)} disabled={phase === 'answered'}
-                      style={{ padding: '15px', background: bg, color: col, border: '2px solid ' + bc, borderRadius: 9, cursor: phase === 'playing' ? 'pointer' : 'default', fontSize: 16, fontWeight: 700 }}>
+                      style={{ padding: 15, background: bg, color: col, border: '2px solid ' + bc, borderRadius: 9, cursor: phase === 'playing' ? 'pointer' : 'default', fontSize: 16, fontWeight: 700 }}>
                       {FLAB[FREQS.indexOf(f)]}
                     </button>
                   );

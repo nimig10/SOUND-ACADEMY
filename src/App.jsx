@@ -97,12 +97,12 @@ export default function App() {
         {user.role === 'student' && view === 'exercise' && activeEx && (
           <>
             <ExerciseHeader exercise={activeEx} exTypes={exTypes} onBack={backHome} />
-            {activeEx.type === 'freq'       && <FreqTrain       onComplete={handleComplete} />}
-            {activeEx.type === 'eq'         && <EQTrain         onComplete={handleComplete} />}
-            {activeEx.type === 'effects'    && <FXTrain         onComplete={handleComplete} />}
-            {activeEx.type === 'compressor' && <CompressorTrain onComplete={handleComplete} />}
-            {activeEx.type === 'gate'       && <GateTrain       onComplete={handleComplete} />}
-            {activeEx.type === 'ducker'     && <DuckerTrain     onComplete={handleComplete} />}
+            {activeEx.type === 'freq'       && <FreqTrain       exercise={activeEx} onComplete={handleComplete} />}
+            {activeEx.type === 'eq'         && <EQTrain         exercise={activeEx} onComplete={handleComplete} />}
+            {activeEx.type === 'effects'    && <FXTrain         exercise={activeEx} onComplete={handleComplete} />}
+            {activeEx.type === 'compressor' && <CompressorTrain exercise={activeEx} onComplete={handleComplete} />}
+            {activeEx.type === 'gate'       && <GateTrain       exercise={activeEx} onComplete={handleComplete} />}
+            {activeEx.type === 'ducker'     && <DuckerTrain     exercise={activeEx} onComplete={handleComplete} />}
             {!BUILT_IN_TYPES.includes(activeEx.type) && <GenericExercise exercise={activeEx} exTypes={exTypes} onComplete={handleComplete} />}
           </>
         )}

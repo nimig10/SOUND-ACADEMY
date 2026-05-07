@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { C } from '../constants.js';
+import { useSignalSource, parseSignalFromNotes } from '../hooks/useSignalSource.js';
 
 const ROUNDS = [
   { threshold: -20, attack: 5,  release: 150, depth: 12 },
@@ -87,7 +88,7 @@ function calcScore(vals, target) {
   return Math.max(0, Math.round((1 - avg * 2) * 100));
 }
 
-export default function DuckerTrain({ onComplete }) {
+export default function DuckerTrain({ exercise, onComplete }) {
   const [phase,    setPhase]    = useState('idle');
   const [roundIdx, setRoundIdx] = useState(0);
   const [vals,     setVals]     = useState({ ...DEFAULT_VALS });
@@ -102,7 +103,10 @@ export default function DuckerTrain({ onComplete }) {
   const valsRef = useRef(vals);
   useEffect(() => { valsRef.current = vals; }, [vals]);
 
-  const target = ROUNDS[roundIdx % ROUNDS.length];
+  const { sigBufRef, loading: sigLoading } = useSignalSource(exercise);
+  const { signalConfig } = parseSignalFromNotes(exercise?.notes);
+
+  const target = signalConfig?.targetParams || ROUNDS[roundIdx % ROUNDS.length];
 
   const getCtx = () => {
     if (!actx.current) actx.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -117,8 +121,6 @@ export default function DuckerTrain({ onComplete }) {
   const playProcessed = async (targetVals) => {
     stopSrc();
     const ctx = getCtx();
-    if (!trigBuf.current) trigBuf.current = buildTriggerBuffer(ctx.sampleRate);
-    if (!padBuf.current)  padBuf.current  = buildPadBuffer(ctx.sampleRate);
 
     setLoading(true);
     const processed = await applyDucker(trigBuf.current, padBuf.current, ctx.sampleRate, targetVals);
@@ -136,6 +138,9 @@ export default function DuckerTrain({ onComplete }) {
   };
 
   const startRound = () => {
+    const ctx = getCtx();
+    trigBuf.current = buildTriggerBuffer(ctx.sampleRate);
+    padBuf.current  = sigBufRef.current ?? buildPadBuffer(ctx.sampleRate);
     setVals({ ...DEFAULT_VALS });
     setMode('A');
     setPhase('playing');
@@ -167,14 +172,14 @@ export default function DuckerTrain({ onComplete }) {
     if (onComplete) onComplete(score);
   };
 
-  const nextRound = () => {
-    setRoundIdx(r => r + 1);
-    startRound();
-  };
+  const nextRound = () => { setRoundIdx(r => r + 1); setPhase('idle'); };
 
   useEffect(() => () => stopSrc(), []);
 
-  const avgScore = hist.length ? Math.round(hist.reduce((a, b) => a + b.score, 0) / hist.length) : null;
+  const avgScore  = hist.length ? Math.round(hist.reduce((a, b) => a + b.score, 0) / hist.length) : null;
+  const lastScore = hist[hist.length - 1]?.score;
+
+  if (sigLoading) return <div style={{ color: C.muted, fontSize: 13, padding: 24 }}>⏳ טוען אות...</div>;
 
   return (
     <div>
@@ -248,9 +253,9 @@ export default function DuckerTrain({ onComplete }) {
 
               {phase === 'answered' && (
                 <>
-                  <div style={{ padding: 14, marginBottom: 14, background: hist[hist.length - 1]?.score >= 70 ? 'rgba(0,232,122,.08)' : 'rgba(255,51,85,.08)', border: '1px solid ' + (hist[hist.length - 1]?.score >= 70 ? C.green : C.red), borderRadius: 8, textAlign: 'center' }}>
-                    <div style={{ fontSize: 28, fontWeight: 900, color: hist[hist.length - 1]?.score >= 70 ? C.green : C.red }}>{hist[hist.length - 1]?.score}%</div>
-                    <div style={{ fontSize: 12, color: C.muted }}>{hist[hist.length - 1]?.score >= 70 ? '✅ כל הכבוד!' : '❌ נסה שוב בסיבוב הבא'}</div>
+                  <div style={{ padding: 14, marginBottom: 14, background: lastScore >= 70 ? 'rgba(0,232,122,.08)' : 'rgba(255,51,85,.08)', border: '1px solid ' + (lastScore >= 70 ? C.green : C.red), borderRadius: 8, textAlign: 'center' }}>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: lastScore >= 70 ? C.green : C.red }}>{lastScore}%</div>
+                    <div style={{ fontSize: 12, color: C.muted }}>{lastScore >= 70 ? '✅ כל הכבוד!' : '❌ נסה שוב בסיבוב הבא'}</div>
                   </div>
                   <button onClick={nextRound} style={{ padding: '10px 28px', background: C.y, color: '#000', border: 'none', borderRadius: 7, fontWeight: 900, fontSize: 13, cursor: 'pointer' }}>הבא ›</button>
                 </>
