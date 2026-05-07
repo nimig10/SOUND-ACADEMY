@@ -85,7 +85,7 @@ export default function EQTrain({ onComplete }) {
               <div style={{ position: 'relative', width: 24, height: 76 }}>
                 <input type="range" min="-12" max="12" step=".5" value={usr[i]}
                   onChange={e => { const v = parseFloat(e.target.value); setUsr(u => { const n = [...u]; n[i] = v; return n; }); }}
-                  style={{ position: 'absolute', width: 76, height: 24, top: '50%', left: '50%', transform: 'translate(-50%,-50%) rotate(-90deg)', accentColor: C.blue, cursor: 'pointer' }} />
+                  style={{ position: 'absolute', width: 76, height: 24, top: '50%', left: '50%', transform: 'translate(-50%,-50%) rotate(90deg)', accentColor: C.blue, cursor: 'pointer' }} />
               </div>
               <span style={{ fontSize: 8, color: C.muted }}>{b.l}</span>
             </div>

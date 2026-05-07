@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { C, BUILT_IN_TYPES, INIT_STUDENTS, INIT_EXERCISES, INIT_EX_TYPES, INIT_MIX_CHS } from './constants.js';
-import { useLocalStorage, stripAudioUrls } from './hooks/useLocalStorage.js';
+import { useTable, useScores } from './hooks/useSupabase.js';
 
 import LoginScreen    from './components/LoginScreen.jsx';
 import AdminDashboard from './components/AdminDashboard.jsx';
@@ -10,35 +10,17 @@ import StudentHome    from './student/StudentHome.jsx';
 import StudentMixer   from './student/StudentMixer.jsx';
 import ExerciseHeader from './student/ExerciseHeader.jsx';
 
-import FreqTrain      from './training/FreqTrain.jsx';
-import EQTrain        from './training/EQTrain.jsx';
-import FXTrain        from './training/FXTrain.jsx';
+import FreqTrain       from './training/FreqTrain.jsx';
+import EQTrain         from './training/EQTrain.jsx';
+import FXTrain         from './training/FXTrain.jsx';
 import GenericExercise from './training/GenericExercise.jsx';
 
 export default function App() {
-  // Persistent state — saved to localStorage automatically
-  const [students,  setStudents]  = useLocalStorage('sa_students',  INIT_STUDENTS);
-  const [exercises, setExercises] = useLocalStorage('sa_exercises', INIT_EXERCISES);
-  const [exTypes,   setExTypes]   = useLocalStorage('sa_exTypes',   INIT_EX_TYPES);
-  const [doneMap,   setDoneMap]   = useLocalStorage('sa_doneMap',   {});
-
-  // Mixer channel names are persisted; audio URLs are blob: and cannot survive reload
-  const [mixerChsMeta, setMixerChsMeta] = useLocalStorage('sa_mixerChs', INIT_MIX_CHS.map(ch => ({ id: ch.id, name: ch.name })));
-  const mixerChs = mixerChsMeta.map(m => ({ ...m, audioUrl: null, audioName: null }));
-  const setMixerChs = updater => {
-    setMixerChsMeta(prev => {
-      const next = typeof updater === 'function' ? updater(prev.map(m => ({ ...m, audioUrl: null, audioName: null }))) : updater;
-      return stripAudioUrls(next).map(ch => ({ id: ch.id, name: ch.name }));
-    });
-  };
-
-  // Exercises: persist text fields only, not blob audio URLs
-  const setExercisesSafe = updater => {
-    setExercises(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      return stripAudioUrls(next);
-    });
-  };
+  // Supabase-backed state
+  const [students,  setStudents,  studentsLoaded]  = useTable('students',        INIT_STUDENTS);
+  const [exercises, setExercises, exercisesLoaded] = useTable('exercises',       INIT_EXERCISES);
+  const [exTypes,   setExTypes,   typesLoaded]     = useTable('ex_types',        INIT_EX_TYPES);
+  const [mixerChs,  setMixerChs,  mixerLoaded]     = useTable('mixer_channels',  INIT_MIX_CHS);
 
   // Session-only state
   const [user,     setUser]     = useState(null);
@@ -47,11 +29,22 @@ export default function App() {
 
   const curStudent = user?.role === 'student' ? students.find(s => s.id === user.studentId) : null;
 
-  const startEx  = ex  => { setActiveEx(ex); setView('exercise'); };
-  const backHome = ()  => { setActiveEx(null); setView('home'); };
-  const handleComplete = score => { if (activeEx) setDoneMap(d => ({ ...d, [activeEx.id]: score })); };
+  // Per-student scores from Supabase
+  const [doneMap, saveScore] = useScores(user?.studentId);
+
+  const startEx        = ex    => { setActiveEx(ex); setView('exercise'); };
+  const backHome       = ()    => { setActiveEx(null); setView('home'); };
+  const handleComplete = score => { if (activeEx) saveScore(activeEx.id, score); };
+
+  const allLoaded = studentsLoaded && exercisesLoaded && typesLoaded && mixerLoaded;
 
   if (!user) return <LoginScreen students={students} onLogin={setUser} />;
+
+  if (!allLoaded) return (
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ color: C.y, fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>⏳ טוען נתונים...</div>
+    </div>
+  );
 
   const adminNav   = [{ id: 'dashboard', icon: '📊', label: 'דשבורד' }, { id: 'admin', icon: '⚙️', label: 'ניהול' }];
   const studentNav = [{ id: 'home', icon: '📋', label: 'התרגילים שלי' }, { id: 'mixer', icon: '🎚️', label: 'מיקסר' }];
@@ -86,7 +79,7 @@ export default function App() {
         )}
         {user.role === 'admin' && view === 'admin' && (
           <AdminPanel
-            exercises={exercises} setExercises={setExercisesSafe}
+            exercises={exercises} setExercises={setExercises}
             students={students}   setStudents={setStudents}
             exTypes={exTypes}     setExTypes={setExTypes}
             mixerChs={mixerChs}   setMixerChs={setMixerChs}
