@@ -447,10 +447,17 @@ export default function StudentMixer({ channels: chs }) {
     }
   };
 
-  const setFaderV  = (i, v) => { setStrips(s => s.map((x,k)=>k===i?{...x,fader:v}:x)); if(nodesRef.current[i])nodesRef.current[i].gainN.gain.value=v; };
+  const setFaderV  = (i, v) => {
+    setStrips(s => s.map((x,k)=>k===i?{...x,fader:v}:x));
+    if (i === 15) { if (masterRef.current) masterRef.current.gain.value = v; }
+    else if (nodesRef.current[i]) nodesRef.current[i].gainN.gain.value = v;
+  };
   const setGainDb  = (i, v) => { setStrips(s => s.map((x,k)=>k===i?{...x,gain:v}:x));  if(nodesRef.current[i]?.gainDbNode)nodesRef.current[i].gainDbNode.gain.value=Math.pow(10,v/20); };
   const setPanV    = (i, v) => { setStrips(s => s.map((x,k)=>k===i?{...x,pan:v}:x));   if(nodesRef.current[i])nodesRef.current[i].panN.pan.value=v; };
-  const toggleMute = i      => setStrips(s => s.map((x,k)=>{ if(k!==i)return x; const m=!x.mute; if(nodesRef.current[i])nodesRef.current[i].gainN.gain.value=m?0:x.fader; return{...x,mute:m}; }));
+  const toggleMute = i => setStrips(s => s.map((x,k)=>{ if(k!==i)return x; const m=!x.mute;
+    if (i === 15) { if (masterRef.current) masterRef.current.gain.value = m ? 0 : x.fader; }
+    else if (nodesRef.current[i]) nodesRef.current[i].gainN.gain.value = m ? 0 : x.fader;
+    return{...x,mute:m}; }));
   const setSend    = (i,j,v) => { setStrips(s=>s.map((x,k)=>k===i?{...x,sends:x.sends.map((sv,sj)=>sj===j?v:sv)}:x)); if(sendRef.current[i]?.[j])sendRef.current[i][j].gain.value=v; };
   const setEqBand  = (i, bi, field, v) => {
     setStrips(s=>s.map((x,k)=>k===i?{...x,eq:x.eq.map((b,bj)=>bj===bi?{...b,[field]:v}:b)}:x));
@@ -693,30 +700,33 @@ export default function StudentMixer({ channels: chs }) {
           {chs.map((ch, i) => {
             const s=strips[i], isM=i===15;
             const FH = 160;
+            const masterVu = playing && !s.mute
+              ? Math.min(1, vus.slice(0,15).reduce((a,v)=>a+v,0) / Math.max(1, chs.filter(c=>c.audioUrl).length))
+              : 0;
             return (
               <div key={i} style={{ width:84, background:isM?'linear-gradient(180deg,#1e1800,#100d00)':'linear-gradient(180deg,#181818,#0d0d0d)', border:'1px solid '+(isM?C.yDim:'#1c1c1c'), borderRadius:7, padding:'7px 4px 6px', display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
 
                 {/* Channel name */}
                 <div style={{ fontSize:11, fontWeight:800, color:isM?C.y:'#aaa', width:'100%', textAlign:'center', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', padding:'0 3px', letterSpacing:.3 }}>{ch.name}</div>
 
-                {/* EQ button */}
-                {dispMode !== 'FADER' && (
+                {/* EQ button — not on Master */}
+                {!isM && dispMode !== 'FADER' && (
                   <button onClick={()=>setEqIdx(eqIdx===i?null:i)}
                     style={{ width:56, height:15, background:eqIdx===i?C.y+'2a':'#0e0e0e', color:eqIdx===i?C.y:'#3a3a3a', border:'1px solid '+(eqIdx===i?C.y+'44':'#1c1c1c'), borderRadius:3, cursor:'pointer', fontSize:8, fontWeight:700, letterSpacing:1 }}>
                     4B · EQ
                   </button>
                 )}
 
-                {/* GAIN knob */}
-                {dispMode !== 'FADER' && (
+                {/* GAIN knob — not on Master */}
+                {!isM && dispMode !== 'FADER' && (
                   <Knob val={s.gain} min={-20} max={12}
                     onChange={v=>setGainDb(i, Math.round(v*2)/2)}
                     label={(s.gain>0?'+':'')+s.gain.toFixed(0)+'dB'}
                     size={30} color={s.gain > 0 ? '#ff9944' : s.gain < 0 ? '#44aaff' : '#555'} />
                 )}
 
-                {/* Sends A1/A2/A3 */}
-                {dispMode === 'FULL' && (
+                {/* Sends A1/A2/A3 — not on Master */}
+                {!isM && dispMode === 'FULL' && (
                   <div style={{ display:'flex', flexDirection:'column', gap:3, width:'100%', alignItems:'center', padding:'2px 0' }}>
                     {[0,1,2].map(j=>(
                       <div key={j} style={{ display:'flex', alignItems:'center', gap:3, width:'100%', justifyContent:'center' }}>
@@ -727,23 +737,26 @@ export default function StudentMixer({ channels: chs }) {
                   </div>
                 )}
 
-                {/* PAN */}
-                <Knob val={s.pan} min={-1} max={1} onChange={v=>setPanV(i,v)} label="PAN" size={28} color={C.green} />
+                {/* PAN — not on Master */}
+                {!isM && <Knob val={s.pan} min={-1} max={1} onChange={v=>setPanV(i,v)} label="PAN" size={28} color={C.green} />}
+
+                {/* Master label */}
+                {isM && <div style={{ fontSize:8, color:C.yDim, fontFamily:'monospace', letterSpacing:2, marginTop:4 }}>MASTER</div>}
 
                 {/* VU + Fader */}
                 <div style={{ display:'flex', gap:3, alignItems:'flex-end' }}>
-                  <VU level={playing&&s&&!s.mute?vus[i]:0} ht={FH} />
+                  <VU level={isM ? masterVu : (playing&&s&&!s.mute?vus[i]:0)} ht={FH} />
                   <Fader val={s.fader} onChange={v=>setFaderV(i,v)} ht={FH} />
                 </div>
 
                 {/* MUTE */}
                 <button onClick={()=>toggleMute(i)}
-                  style={{ width:56, padding:'3px 0', background:s.mute?C.red:'#0e0e0e', color:s.mute?'#fff':C.muted, border:'1px solid '+(s.mute?C.red:'#1c1c1c'), borderRadius:3, fontSize:8, fontWeight:700, cursor:'pointer', letterSpacing:.5 }}>
-                  MUTE
+                  style={{ width:56, padding:'3px 0', background:s.mute?(isM?C.y:C.red):'#0e0e0e', color:s.mute?'#000':C.muted, border:'1px solid '+(s.mute?(isM?C.y:C.red):'#1c1c1c'), borderRadius:3, fontSize:8, fontWeight:700, cursor:'pointer', letterSpacing:.5 }}>
+                  {isM ? (s.mute ? 'MUTED' : 'MUTE') : 'MUTE'}
                 </button>
 
-                {/* Instrument icon */}
-                {ch.instrument&&(()=>{const inst=INSTRUMENTS.find(x=>x.id===ch.instrument);return inst?<span title={inst.label} style={{fontSize:14,lineHeight:1}}>{inst.icon}</span>:null;})()}
+                {/* Instrument icon — not on Master */}
+                {!isM && ch.instrument&&(()=>{const inst=INSTRUMENTS.find(x=>x.id===ch.instrument);return inst?<span title={inst.label} style={{fontSize:14,lineHeight:1}}>{inst.icon}</span>:null;})()}
               </div>
             );
           })}
