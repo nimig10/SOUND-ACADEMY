@@ -1,6 +1,15 @@
 import { useState } from 'react';
-import { C, iS } from '../constants.js';
+import { C, iS, INSTRUMENTS } from '../constants.js';
 import { supabase } from '../lib/supabase.js';
+
+// Save exactly one channel row — never touches other channels
+const saveChannel = (ch) =>
+  supabase.from('mixer_channels').upsert({
+    id: ch.id,
+    name: ch.name,
+    audio_url: ch.audioUrl || null,
+    instrument: ch.instrument || null,
+  }).then();
 
 export default function MixerSetup({ channels, setChannels }) {
   const [uploading, setUploading] = useState({});
@@ -12,16 +21,29 @@ export default function MixerSetup({ channels, setChannels }) {
     const { error } = await supabase.storage.from('audio').upload(path, file, { upsert: true });
     if (error) { alert('שגיאה בהעלאה: ' + error.message); setUploading(u => ({ ...u, [idx]: false })); return; }
     const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(path);
-    setChannels(c => c.map((x, i) => i === idx ? { ...x, audioUrl: publicUrl, audioName: file.name } : x));
+    const updated = { ...channels[idx], audioUrl: publicUrl, audioName: file.name };
+    await saveChannel(updated);
+    setChannels(c => c.map((x, i) => i === idx ? updated : x));
     setUploading(u => ({ ...u, [idx]: false }));
   };
 
-  const clear = idx => setChannels(c => c.map((x, i) => {
-    if (i !== idx) return x;
-    return { ...x, audioUrl: null, audioName: null };
-  }));
+  const clear = async idx => {
+    const updated = { ...channels[idx], audioUrl: null, audioName: null };
+    await saveChannel(updated);
+    setChannels(c => c.map((x, i) => i !== idx ? x : updated));
+  };
 
-  const rename = (idx, name) => setChannels(c => c.map((x, i) => i === idx ? { ...x, name } : x));
+  const rename = (idx, name) => {
+    const updated = { ...channels[idx], name };
+    saveChannel(updated);
+    setChannels(c => c.map((x, i) => i === idx ? updated : x));
+  };
+
+  const setInstrument = (idx, instrument) => {
+    const updated = { ...channels[idx], instrument: instrument || null };
+    saveChannel(updated);
+    setChannels(c => c.map((x, i) => i === idx ? updated : x));
+  };
 
   const loaded = channels.filter(c => c.audioUrl).length;
 
@@ -33,7 +55,12 @@ export default function MixerSetup({ channels, setChannels }) {
         {channels.map((ch, i) => (
           <div key={i} style={{ background: C.card, padding: 12, borderRadius: 8, border: '1px solid ' + (i === 15 ? C.yDim : C.borderLit) }}>
             <div style={{ fontSize: 10, color: i === 15 ? C.y : C.muted, marginBottom: 5, fontWeight: 700 }}>{'ערוץ ' + (i + 1)}</div>
-            <input value={ch.name} onChange={e => rename(i, e.target.value)} style={{ ...iS, marginBottom: 8, fontSize: 12, padding: '6px 8px' }} placeholder={'Ch ' + (i + 1)} />
+            <input value={ch.name} onChange={e => rename(i, e.target.value)} style={{ ...iS, marginBottom: 6, fontSize: 12, padding: '6px 8px' }} placeholder={'Ch ' + (i + 1)} />
+            <select value={ch.instrument || ''} onChange={e => setInstrument(i, e.target.value || null)}
+              style={{ ...iS, marginBottom: 8, fontSize: 11, padding: '5px 7px' }}>
+              <option value="">— ללא כלי —</option>
+              {INSTRUMENTS.map(inst => <option key={inst.id} value={inst.id}>{inst.icon} {inst.label}</option>)}
+            </select>
             {uploading[i] ? (
               <div style={{ padding: '5px 8px', background: C.panel, borderRadius: 5, color: C.y, fontSize: 9, textAlign: 'center' }}>⏳ מעלה...</div>
             ) : ch.audioName ? (

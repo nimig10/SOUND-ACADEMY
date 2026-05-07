@@ -18,6 +18,23 @@ export const lS = {
 
 export const BUILT_IN_TYPES = ['freq', 'eq', 'effects'];
 
+export const INSTRUMENTS = [
+  { id: 'kick',     icon: '🥁', label: 'קיק'          },
+  { id: 'snare',    icon: '🪘', label: 'סנאר'         },
+  { id: 'hihat',    icon: '🎶', label: 'היהאט'        },
+  { id: 'perc',     icon: '🪗', label: 'פרקשן'        },
+  { id: 'bass',     icon: '🎸', label: 'בס'           },
+  { id: 'guitar',   icon: '🎸', label: 'גיטרה'        },
+  { id: 'acoustic', icon: '🪕', label: 'גיטרה אקוסטית'},
+  { id: 'piano',    icon: '🎹', label: 'פסנתר'        },
+  { id: 'keys',     icon: '🎹', label: 'קלידים'       },
+  { id: 'synth',    icon: '🎛️', label: 'סינת'         },
+  { id: 'vocal',    icon: '🎤', label: 'ווקאל'        },
+  { id: 'brass',    icon: '🎺', label: 'נשיפה'        },
+  { id: 'strings',  icon: '🎻', label: 'מיתרים'       },
+  { id: 'fx',       icon: '🔊', label: 'FX / Return'  },
+];
+
 export const DIFF_COL = { קל: C.green, בינוני: C.y, קשה: C.red };
 
 export const INIT_EX_TYPES = [
@@ -45,4 +62,5 @@ export const INIT_MIX_CHS = Array.from({ length: 16 }, (_, i) => ({
   name: i === 15 ? 'Master' : 'Ch ' + (i + 1),
   audioUrl: null,
   audioName: null,
+  instrument: null,
 }));

@@ -52,7 +52,8 @@ export function useScores(studentId) {
 
 function syncTable(table, data) {
   if (table === 'mixer_channels') {
-    supabase.from(table).upsert(data.map(ch => ({ id: ch.id, name: ch.name, audio_url: ch.audioUrl || null }))).then();
+    // All mixer_channels writes are handled directly in MixerSetup (per-channel upsert).
+    // Never do a bulk sync here — it would race-overwrite audio_url with null on other channels.
     return;
   }
   if (table === 'exercises') {
@@ -98,7 +99,7 @@ function deserialize(table, rows) {
     return rows.map(r => ({ id: r.id, label: r.label, icon: r.icon, color: r.color }));
   }
   if (table === 'mixer_channels') {
-    return rows.map(r => ({ id: r.id, name: r.name, audioUrl: r.audio_url || null, audioName: r.audio_url ? r.name : null }));
+    return rows.map(r => ({ id: r.id, name: r.name, audioUrl: r.audio_url || null, audioName: r.audio_url ? r.name : null, instrument: r.instrument || null }));
   }
   return rows;
 }
