@@ -23,7 +23,7 @@ const AUX_FX_PARAMS = {
   Chorus:  [{ k: 'rate', l: 'Rate Hz', mn: .1,  mx: 8   }, { k: 'depth', l: 'Depth',    mn: 0, mx: 1  }, { k: 'mix', l: 'Mix', mn: 0, mx: 1 }],
   Flanger: [{ k: 'rate', l: 'Rate Hz', mn: .1,  mx: 5   }, { k: 'depth', l: 'Depth',    mn: 0, mx: 1  }, { k: 'fb', l: 'Feedback', mn: 0, mx: .9 }, { k: 'mix', l: 'Mix', mn: 0, mx: 1 }],
 };
-const mkStrip = () => ({ fader: .75, pan: 0, mute: false, gain: 0, sends: [0, 0, 0], eq: EQ_BANDS.map(b => ({ g: 0, f: b.def, q: 1.0, filterType: b.type, slope: 0.7 })) });
+const mkStrip = () => ({ fader: .75, pan: 0, mute: false, solo: false, gain: 0, sends: [0, 0, 0], eq: EQ_BANDS.map(b => ({ g: 0, f: b.def, q: 1.0, filterType: b.type, slope: 0.7 })) });
 const mkAuxM  = (t, rl = .6) => {
   const p = t === 'Delay' ? { time: .4, fb: .4, mix: .6 } : t === 'Reverb' ? { decay: 2.5, mix: .65 } : t === 'Chorus' ? { rate: 1, depth: .5, mix: .5 } : { rate: .5, depth: .5, fb: .4, mix: .5 };
   return { type: t, rl, open: false, params: p };
@@ -207,6 +207,7 @@ export default function StudentMixer({ channels: chs }) {
   const [analyserOn,   setAnalyserOn]   = useState(true);
   const [analyserMode, setAnalyserMode] = useState('POST');
   const [dispMode,     setDispMode]     = useState('FULL'); // 'FULL' | 'MIX' | 'FADER'
+  const [soloMode,     setSoloMode]     = useState('SIP');  // 'SIP' | 'PFL'
   // tape state
   const [tapeOpen,    setTapeOpen]    = useState(false);
   const [recording,   setRecording]   = useState(false);
@@ -220,6 +221,7 @@ export default function StudentMixer({ channels: chs }) {
   const sendRef    = useRef({});   const decodedRef = useRef({});
   const animRef    = useRef();     const stripsRef  = useRef(strips);
   const masterRef  = useRef(null); const loopRef    = useRef(true);
+  const soloModeRef = useRef('SIP');
   const mediaRecRef   = useRef(null);
   const tapeAudioRef  = useRef(new Audio());
   const tapeBlobRef   = useRef(null);
@@ -228,6 +230,18 @@ export default function StudentMixer({ channels: chs }) {
 
   useEffect(() => { stripsRef.current = strips; }, [strips]);
   useEffect(() => { loopRef.current = loopOn; }, [loopOn]);
+  useEffect(() => {
+    soloModeRef.current = soloMode;
+    // Reapply gains on soloed channels when mode flips mid-play
+    const s = stripsRef.current;
+    const hasSolo = s.slice(0,15).some(x => x.solo);
+    if (!hasSolo) return;
+    s.slice(0,15).forEach((strip, i) => {
+      const node = nodesRef.current[i];
+      if (!node || !strip.solo) return;
+      node.gainN.gain.value = strip.mute ? 0 : (soloMode === 'PFL' ? 1.0 : strip.fader);
+    });
+  }, [soloMode]);
 
   useEffect(() => {
     const el = document.createElement('style');
@@ -271,7 +285,14 @@ export default function StudentMixer({ channels: chs }) {
   const startVuLoop = () => {
     const draw = () => {
       const s = stripsRef.current;
-      setVus(Array.from({length:16},(_,i)=>(!nodesRef.current[i]||s[i]&&s[i].mute)?0:s[i]?s[i].fader*(0.2+Math.random()*.9):0));
+      const hasSolo = s.slice(0,15).some(x => x.solo);
+      setVus(Array.from({length:16}, (_, i) => {
+        if (!nodesRef.current[i] || !s[i]) return 0;
+        if (s[i].mute) return 0;
+        if (hasSolo && !s[i].solo) return 0;
+        const isPFL = soloModeRef.current === 'PFL' && s[i].solo;
+        return isPFL ? (0.2 + Math.random() * 0.9) : s[i].fader * (0.2 + Math.random() * 0.9);
+      }));
       animRef.current = requestAnimationFrame(draw);
     };
     animRef.current = requestAnimationFrame(draw);
@@ -331,7 +352,7 @@ export default function StudentMixer({ channels: chs }) {
 
       await Promise.all(chs.map(async (ch, i) => {
         const s = stripsRef.current[i];
-        if (!ch.audioUrl || s.mute) return;
+        if (!ch.audioUrl) return;
         if (!decodedRef.current[ch.audioUrl]) {
           const r = await fetch(ch.audioUrl);
           decodedRef.current[ch.audioUrl] = await ctx.decodeAudioData(await r.arrayBuffer());
@@ -350,7 +371,16 @@ export default function StudentMixer({ channels: chs }) {
         });
         const analyserPost = ctx.createAnalyser(); analyserPost.fftSize = 2048; analyserPost.smoothingTimeConstant = 0.8;
         prev.connect(analyserPost);
-        const gainN = ctx.createGain(); gainN.gain.value = s.fader; prev.connect(gainN);
+        const gainN = ctx.createGain();
+        const hasSoloNow = stripsRef.current.slice(0,15).some(x => x.solo);
+        if (s.mute) {
+          gainN.gain.value = 0;
+        } else if (hasSoloNow) {
+          gainN.gain.value = s.solo ? (soloModeRef.current === 'PFL' ? 1.0 : s.fader) : 0;
+        } else {
+          gainN.gain.value = s.fader;
+        }
+        prev.connect(gainN);
         const panN  = ctx.createStereoPanner(); panN.pan.value = s.pan; gainN.connect(panN); panN.connect(master);
         if (!sendRef.current[i]) sendRef.current[i] = [];
         s.sends.forEach((sv, j) => { const sn = ctx.createGain(); sn.gain.value = sv; gainN.connect(sn); sn.connect(auxBusRef.current[j]); sendRef.current[i][j] = sn; });
@@ -450,7 +480,33 @@ export default function StudentMixer({ channels: chs }) {
   const setFaderV  = (i, v) => {
     setStrips(s => s.map((x,k)=>k===i?{...x,fader:v}:x));
     if (i === 15) { if (masterRef.current) masterRef.current.gain.value = v; }
-    else if (nodesRef.current[i]) nodesRef.current[i].gainN.gain.value = v;
+    else if (nodesRef.current[i]) {
+      const s = stripsRef.current[i];
+      const hasSolo = stripsRef.current.slice(0,15).some(x => x.solo);
+      // Only apply fader if this channel is audible (not muted, not silenced by solo)
+      if (!s.mute && (!hasSolo || s.solo) && soloModeRef.current === 'SIP') {
+        nodesRef.current[i].gainN.gain.value = v;
+      }
+    }
+  };
+
+  const toggleSolo = i => {
+    setStrips(prev => {
+      const next = prev.map((x, k) => k === i ? { ...x, solo: !x.solo } : x);
+      const hasSolo = next.slice(0,15).some(s => s.solo);
+      next.slice(0,15).forEach((s, j) => {
+        const node = nodesRef.current[j];
+        if (!node) return;
+        if (hasSolo) {
+          node.gainN.gain.value = s.solo
+            ? (s.mute ? 0 : (soloModeRef.current === 'PFL' ? 1.0 : s.fader))
+            : 0;
+        } else {
+          node.gainN.gain.value = s.mute ? 0 : s.fader;
+        }
+      });
+      return next;
+    });
   };
   const setGainDb  = (i, v) => { setStrips(s => s.map((x,k)=>k===i?{...x,gain:v}:x));  if(nodesRef.current[i]?.gainDbNode)nodesRef.current[i].gainDbNode.gain.value=Math.pow(10,v/20); };
   const setPanV    = (i, v) => { setStrips(s => s.map((x,k)=>k===i?{...x,pan:v}:x));   if(nodesRef.current[i])nodesRef.current[i].panN.pan.value=v; };
@@ -682,14 +738,25 @@ export default function StudentMixer({ channels: chs }) {
         ))}
       </div>
 
-      {/* ── Console display-mode bar ── */}
+      {/* ── Console display-mode + solo-mode bar ── */}
       <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6, padding:'7px 12px', background:'#090909', borderRadius:8, border:'1px solid '+C.borderLit, flexWrap:'wrap' }}>
-        <span style={{ fontSize:9, color:C.muted, fontFamily:'monospace', letterSpacing:2, marginLeft:2 }}>VIEW</span>
+        <span style={{ fontSize:9, color:C.muted, fontFamily:'monospace', letterSpacing:2 }}>VIEW</span>
         <div style={{ width:1, height:18, background:C.borderLit }} />
         {[['FULL','כולל Sends + Gain'],['MIX','Gain + EQ בלי Sends'],['FADER','פיידר בלבד']].map(([m,tip])=>(
           <button key={m} onClick={()=>setDispMode(m)} title={tip}
             style={{ ...tBtnS(dispMode===m, C.y), padding:'4px 13px', fontSize:9 }}>{m}</button>
         ))}
+        <div style={{ width:1, height:18, background:C.borderLit, margin:'0 4px' }} />
+        <span style={{ fontSize:9, color:C.muted, fontFamily:'monospace', letterSpacing:2 }}>SOLO</span>
+        <button onClick={()=>setSoloMode('SIP')} title="Solo In Place — AUX returns stay active (SAFE)"
+          style={{ ...tBtnS(soloMode==='SIP','#ffaa00'), padding:'4px 12px', fontSize:9 }}>IN PLACE</button>
+        <button onClick={()=>setSoloMode('PFL')} title="Pre-Fader Listen — hear signal before fader"
+          style={{ ...tBtnS(soloMode==='PFL','#ffaa00'), padding:'4px 12px', fontSize:9 }}>PFL</button>
+        {strips.slice(0,15).some(s=>s.solo) && (
+          <div style={{ fontSize:8, color:'#ffaa00', fontFamily:'monospace', letterSpacing:1, padding:'2px 7px', background:'#ffaa0018', border:'1px solid #ffaa0044', borderRadius:4 }}>
+            {soloMode==='SIP'?'● SOLO IN PLACE':'● PFL — AUX SAFE'}
+          </div>
+        )}
         <div style={{ width:1, height:18, background:C.borderLit, marginLeft:'auto' }} />
         <span style={{ fontSize:9, color:C.muted, fontFamily:'monospace' }}>{chs.filter(c=>c.audioUrl).length} / 16 loaded</span>
       </div>
@@ -749,11 +816,19 @@ export default function StudentMixer({ channels: chs }) {
                   <Fader val={s.fader} onChange={v=>setFaderV(i,v)} ht={FH} />
                 </div>
 
-                {/* MUTE */}
-                <button onClick={()=>toggleMute(i)}
-                  style={{ width:56, padding:'3px 0', background:s.mute?(isM?C.y:C.red):'#0e0e0e', color:s.mute?'#000':C.muted, border:'1px solid '+(s.mute?(isM?C.y:C.red):'#1c1c1c'), borderRadius:3, fontSize:8, fontWeight:700, cursor:'pointer', letterSpacing:.5 }}>
-                  {isM ? (s.mute ? 'MUTED' : 'MUTE') : 'MUTE'}
-                </button>
+                {/* MUTE + SOLO row */}
+                <div style={{ display:'flex', gap:2, width:'100%', justifyContent:'center' }}>
+                  <button onClick={()=>toggleMute(i)}
+                    style={{ flex:1, padding:'3px 0', background:s.mute?(isM?C.y:C.red):'#0e0e0e', color:s.mute?'#000':C.muted, border:'1px solid '+(s.mute?(isM?C.y:C.red):'#1c1c1c'), borderRadius:3, fontSize:8, fontWeight:700, cursor:'pointer', letterSpacing:.3 }}>
+                    {s.mute ? 'MTDO' : 'MUTE'}
+                  </button>
+                  {!isM && (
+                    <button onClick={()=>toggleSolo(i)}
+                      style={{ flex:1, padding:'3px 0', background:s.solo?'#ffaa00':'#0e0e0e', color:s.solo?'#000':C.muted, border:'1px solid '+(s.solo?'#ffaa00':'#1c1c1c'), borderRadius:3, fontSize:8, fontWeight:700, cursor:'pointer', letterSpacing:.3, boxShadow:s.solo?'0 0 6px #ffaa0066':undefined }}>
+                      SOLO
+                    </button>
+                  )}
+                </div>
 
                 {/* Instrument icon — not on Master */}
                 {!isM && ch.instrument&&(()=>{const inst=INSTRUMENTS.find(x=>x.id===ch.instrument);return inst?<span title={inst.label} style={{fontSize:14,lineHeight:1}}>{inst.icon}</span>:null;})()}
