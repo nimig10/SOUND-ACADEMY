@@ -10,10 +10,12 @@ import StudentHome    from './student/StudentHome.jsx';
 import StudentMixer   from './student/StudentMixer.jsx';
 import ExerciseHeader from './student/ExerciseHeader.jsx';
 
-import FreqTrain       from './training/FreqTrain.jsx';
-import EQTrain         from './training/EQTrain.jsx';
-import FXTrain         from './training/FXTrain.jsx';
-import GenericExercise from './training/GenericExercise.jsx';
+import FreqTrain        from './training/FreqTrain.jsx';
+import EQTrain          from './training/EQTrain.jsx';
+import FXTrain          from './training/FXTrain.jsx';
+import CompressorTrain  from './training/CompressorTrain.jsx';
+import GateTrain        from './training/GateTrain.jsx';
+import GenericExercise  from './training/GenericExercise.jsx';
 
 export default function App() {
   // Supabase-backed state
@@ -94,9 +96,11 @@ export default function App() {
         {user.role === 'student' && view === 'exercise' && activeEx && (
           <>
             <ExerciseHeader exercise={activeEx} exTypes={exTypes} onBack={backHome} />
-            {activeEx.type === 'freq'    && <FreqTrain      onComplete={handleComplete} />}
-            {activeEx.type === 'eq'      && <EQTrain        onComplete={handleComplete} />}
-            {activeEx.type === 'effects' && <FXTrain        onComplete={handleComplete} />}
+            {activeEx.type === 'freq'       && <FreqTrain       onComplete={handleComplete} />}
+            {activeEx.type === 'eq'         && <EQTrain         onComplete={handleComplete} />}
+            {activeEx.type === 'effects'    && <FXTrain         onComplete={handleComplete} />}
+            {activeEx.type === 'compressor' && <CompressorTrain onComplete={handleComplete} />}
+            {activeEx.type === 'gate'       && <GateTrain       onComplete={handleComplete} />}
             {!BUILT_IN_TYPES.includes(activeEx.type) && <GenericExercise exercise={activeEx} exTypes={exTypes} onComplete={handleComplete} />}
           </>
         )}

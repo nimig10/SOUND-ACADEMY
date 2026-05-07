@@ -16,7 +16,7 @@ export const lS = {
   display: 'block', fontSize: 10, color: '#666', marginBottom: 5, letterSpacing: .5,
 };
 
-export const BUILT_IN_TYPES = ['freq', 'eq', 'effects'];
+export const BUILT_IN_TYPES = ['freq', 'eq', 'effects', 'compressor', 'gate'];
 
 export const INSTRUMENTS = [
   { id: 'kick',     icon: '🥁', label: 'קיק'          },
@@ -38,9 +38,11 @@ export const INSTRUMENTS = [
 export const DIFF_COL = { קל: C.green, בינוני: C.y, קשה: C.red };
 
 export const INIT_EX_TYPES = [
-  { id: 'freq',    label: 'זיהוי תדרים', icon: '🎵', color: '#4488ff' },
-  { id: 'eq',      label: 'אימון EQ',    icon: '📈', color: '#FFD700' },
-  { id: 'effects', label: 'אפקטים',      icon: '🌀', color: '#ff44bb' },
+  { id: 'freq',       label: 'זיהוי תדרים', icon: '🎵', color: '#4488ff' },
+  { id: 'eq',         label: 'אימון EQ',    icon: '📈', color: '#FFD700' },
+  { id: 'effects',    label: 'אפקטים',      icon: '🌀', color: '#ff44bb' },
+  { id: 'compressor', label: 'קומפרסור',    icon: '🗜️', color: '#ff8844' },
+  { id: 'gate',       label: 'Gate',        icon: '🚪', color: '#00e87a' },
 ];
 
 export const INIT_STUDENTS = [
