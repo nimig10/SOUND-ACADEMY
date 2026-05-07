@@ -1,15 +1,23 @@
+import { useState } from 'react';
 import { C, iS } from '../constants.js';
+import { supabase } from '../lib/supabase.js';
 
 export default function MixerSetup({ channels, setChannels }) {
-  const handleFile = (idx, file) => {
+  const [uploading, setUploading] = useState({});
+
+  const handleFile = async (idx, file) => {
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    setChannels(c => c.map((x, i) => i === idx ? { ...x, audioUrl: url, audioName: file.name } : x));
+    setUploading(u => ({ ...u, [idx]: true }));
+    const path = `mixer/${Date.now()}_${file.name}`;
+    const { error } = await supabase.storage.from('audio').upload(path, file, { upsert: true });
+    if (error) { alert('שגיאה בהעלאה: ' + error.message); setUploading(u => ({ ...u, [idx]: false })); return; }
+    const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(path);
+    setChannels(c => c.map((x, i) => i === idx ? { ...x, audioUrl: publicUrl, audioName: file.name } : x));
+    setUploading(u => ({ ...u, [idx]: false }));
   };
 
   const clear = idx => setChannels(c => c.map((x, i) => {
     if (i !== idx) return x;
-    if (x.audioUrl) URL.revokeObjectURL(x.audioUrl);
     return { ...x, audioUrl: null, audioName: null };
   }));
 
@@ -26,7 +34,9 @@ export default function MixerSetup({ channels, setChannels }) {
           <div key={i} style={{ background: C.card, padding: 12, borderRadius: 8, border: '1px solid ' + (i === 15 ? C.yDim : C.borderLit) }}>
             <div style={{ fontSize: 10, color: i === 15 ? C.y : C.muted, marginBottom: 5, fontWeight: 700 }}>{'ערוץ ' + (i + 1)}</div>
             <input value={ch.name} onChange={e => rename(i, e.target.value)} style={{ ...iS, marginBottom: 8, fontSize: 12, padding: '6px 8px' }} placeholder={'Ch ' + (i + 1)} />
-            {ch.audioName ? (
+            {uploading[i] ? (
+              <div style={{ padding: '5px 8px', background: C.panel, borderRadius: 5, color: C.y, fontSize: 9, textAlign: 'center' }}>⏳ מעלה...</div>
+            ) : ch.audioName ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 8px', background: C.panel, borderRadius: 5, border: '1px solid ' + C.green + '44' }}>
                 <span style={{ fontSize: 9, color: C.green, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ch.audioName}</span>
                 <button onClick={() => clear(i)} style={{ color: C.red, background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}>✕</button>

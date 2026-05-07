@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { C, iS, lS, BUILT_IN_TYPES } from '../constants.js';
+import { supabase } from '../lib/supabase.js';
 
 export default function ExerciseModal({ exercise, onSave, onClose, exTypes, setExTypes }) {
   const def = { title: '', type: exTypes[0]?.id || 'freq', diff: 'קל', description: '', instructions: '', audioUrl: null, audioName: null, notes: '' };
   const [form, setForm] = useState(exercise || def);
   const [ntOpen, setNtOpen] = useState(false);
   const [nt, setNt] = useState({ label: '', icon: '🎯', color: '#44aaff' });
+  const [uploading, setUploading] = useState(false);
 
   const f = (k, v) => setForm(x => ({ ...x, [k]: v }));
 
@@ -18,10 +20,15 @@ export default function ExerciseModal({ exercise, onSave, onClose, exTypes, setE
     setNt({ label: '', icon: '🎯', color: '#44aaff' });
   };
 
-  const handleAudio = file => {
+  const handleAudio = async file => {
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    setForm(x => ({ ...x, audioUrl: url, audioName: file.name }));
+    setUploading(true);
+    const path = `exercises/${Date.now()}_${file.name}`;
+    const { error } = await supabase.storage.from('audio').upload(path, file, { upsert: true });
+    if (error) { alert('שגיאה בהעלאה: ' + error.message); setUploading(false); return; }
+    const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(path);
+    setForm(x => ({ ...x, audioUrl: publicUrl, audioName: file.name }));
+    setUploading(false);
   };
 
   const curType = exTypes.find(t => t.id === form.type);
@@ -90,7 +97,9 @@ export default function ExerciseModal({ exercise, onSave, onClose, exTypes, setE
 
         <div style={{ marginBottom: 12 }}>
           <label style={lS}>קובץ אודיו</label>
-          {form.audioName ? (
+          {uploading ? (
+            <div style={{ padding: '10px 14px', background: C.panel, border: '1px solid ' + C.y + '44', borderRadius: 7, color: C.y, fontSize: 12 }}>⏳ מעלה קובץ...</div>
+          ) : form.audioName ? (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '9px 12px', background: C.panel, border: '1px solid ' + C.green + '44', borderRadius: 7 }}>
               <span style={{ fontSize: 16 }}>🎵</span>
               <span style={{ flex: 1, fontSize: 12, color: C.green, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{form.audioName}</span>

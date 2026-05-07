@@ -52,15 +52,14 @@ export function useScores(studentId) {
 
 function syncTable(table, data) {
   if (table === 'mixer_channels') {
-    // only sync names, no audio blobs
-    supabase.from(table).upsert(data.map(ch => ({ id: ch.id, name: ch.name }))).then();
+    supabase.from(table).upsert(data.map(ch => ({ id: ch.id, name: ch.name, audio_url: ch.audioUrl || null }))).then();
     return;
   }
   if (table === 'exercises') {
     supabase.from(table).upsert(data.map(ex => ({
       id: ex.id, type: ex.type, title: ex.title, diff: ex.diff,
       description: ex.description || '', instructions: ex.instructions || '',
-      audio_name: ex.audioName || null, notes: ex.notes || '',
+      audio_name: ex.audioName || null, audio_url: ex.audioUrl || null, notes: ex.notes || '',
     }))).then();
     // delete removed rows
     if (data.length > 0) {
@@ -93,13 +92,13 @@ function deserialize(table, rows) {
     return rows.map(r => ({ id: r.id, name: r.name, assignedIds: r.assigned_ids || [] }));
   }
   if (table === 'exercises') {
-    return rows.map(r => ({ id: r.id, type: r.type, title: r.title, diff: r.diff, description: r.description, instructions: r.instructions, audioUrl: null, audioName: r.audio_name, notes: r.notes }));
+    return rows.map(r => ({ id: r.id, type: r.type, title: r.title, diff: r.diff, description: r.description, instructions: r.instructions, audioUrl: r.audio_url || null, audioName: r.audio_name, notes: r.notes }));
   }
   if (table === 'ex_types') {
     return rows.map(r => ({ id: r.id, label: r.label, icon: r.icon, color: r.color }));
   }
   if (table === 'mixer_channels') {
-    return rows.map(r => ({ id: r.id, name: r.name, audioUrl: null, audioName: null }));
+    return rows.map(r => ({ id: r.id, name: r.name, audioUrl: r.audio_url || null, audioName: r.audio_url ? r.name : null }));
   }
   return rows;
 }
